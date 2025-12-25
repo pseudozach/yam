@@ -1,0 +1,27 @@
+# --- Zig Build Artifacts ---
+# The local cache contains temporary build objects, hashes, and ZIR.
+# It can be safely deleted at any time.
+.zig-cache/
+zig-cache/
+
+# The default installation prefix (where your binary actually ends up).
+zig-out/
+
+# --- Editor & IDE (Cursor / VS Code) ---
+.vscode/
+.cursor/
+# Exception: Keep your AI rules files!
+!.cursor/rules/
+.history/
+*.log
+
+# --- OS Specific ---
+.DS_Store
+Thumbs.db
+
+# --- Development Trash ---
+*.o
+*.obj
+*.exe
+# Any raw hex transaction files you use for testing
+test_tx_*.hex
