@@ -63,9 +63,6 @@ fn listenForMempool(stream: std.net.Stream, allocator: std.mem.Allocator) !void 
 
         if (std.mem.eql(u8, cmd, "inv")) {
             const inv_msg = try parseInvMessage(message.payload, allocator);
-            // TODO: might not even need this function
-            try handleInvMessage(&inv_msg);
-            // request the data for the vectors
 
             // send the message payload right back with the getdata command
             try sendMessage(stream, "getdata", message.payload);
@@ -101,32 +98,6 @@ fn parseInvMessage(payload: []const u8, allocator: std.mem.Allocator) !yam.InvMe
     return yam.InvMessage.deserialize(fbs.reader(), allocator);
 }
 
-fn handleInvMessage(inv_msg: *const yam.InvMessage) !void {
-    std.debug.print("<<< Received inv message with {d} items\n", .{inv_msg.vectors.len});
-
-    var tx_count: usize = 0;
-    for (inv_msg.vectors) |vector| {
-        const hex = vector.hashHex();
-
-        switch (vector.type) {
-            .msg_tx, .msg_witness_tx => {
-                tx_count += 1;
-                std.debug.print("  TX: {s}\n", .{hex});
-            },
-            .msg_block, .msg_witness_block, .msg_filtered_block, .msg_filtered_witness_block => {
-                std.debug.print("  BLOCK: {s}\n", .{hex});
-            },
-            else => {
-                std.debug.print("  UNKNOWN TYPE ({d}): {s}\n", .{ @intFromEnum(vector.type), hex });
-            },
-        }
-    }
-
-    if (tx_count > 0) {
-        std.debug.print("Found {d} transaction(s) in mempool\n", .{tx_count});
-    }
-}
-
 fn handleTxMessage(payload: []const u8, allocator: std.mem.Allocator) !void {
     var fbs = std.io.fixedBufferStream(payload);
     const tx = try yam.Transaction.deserialize(fbs.reader(), allocator);
@@ -135,38 +106,27 @@ fn handleTxMessage(payload: []const u8, allocator: std.mem.Allocator) !void {
     // Calculate and display txid
     const txid_hex = try tx.txidHex(allocator);
 
-    std.debug.print("\n=== Transaction ===\n", .{});
-    std.debug.print("TXID: {s}\n", .{txid_hex});
-    std.debug.print("Version: {d}\n", .{tx.version});
-    std.debug.print("Inputs: {d}\n", .{tx.inputs.len});
-    std.debug.print("Outputs: {d}\n", .{tx.outputs.len});
-    std.debug.print("Locktime: {d}\n", .{tx.locktime});
-
-    // Display inputs
-    if (tx.inputs.len > 0) {
-        std.debug.print("\nInputs:\n", .{});
-        for (tx.inputs, 0..) |input, i| {
-            const hash_hex = input.prevoutHashHex();
-            std.debug.print("  [{d}] Prevout: {s}:{d}\n", .{ i, hash_hex, input.prevout_index });
-            std.debug.print("       Script length: {d} bytes\n", .{input.script.len});
-            std.debug.print("       Sequence: 0x{x}\n", .{input.sequence});
-        }
+    var total_output_value: f64 = 0;
+    for (tx.outputs) |output| {
+        total_output_value += output.valueBtc();
     }
 
-    // Display outputs
-    if (tx.outputs.len > 0) {
-        std.debug.print("\nOutputs:\n", .{});
-        var total_output: u64 = 0;
-        for (tx.outputs, 0..) |output, i| {
-            const btc = output.valueBtc();
-            total_output += output.value;
-            std.debug.print("  [{d}] {d:.8} BTC ({d} satoshis)\n", .{ i, btc, output.value });
-            std.debug.print("       Script length: {d} bytes\n", .{output.script.len});
-        }
-        const total_btc = @as(f64, @floatFromInt(total_output)) / 100_000_000.0;
-        std.debug.print("\nTotal output: {d:.8} BTC ({d} satoshis)\n", .{ total_btc, total_output });
+    std.debug.print("{s} {d}→{d} {d:.8} BTC", .{ txid_hex, tx.inputs.len, tx.outputs.len, total_output_value });
+
+    // if 3 or more outputs, indicate a likely exchange withdrawal (batched for users)
+    if (tx.outputs.len >= 3) {
+        std.debug.print(" 🏦", .{});
     }
 
+    // if input count exceeds output count, indicate a consolidate transaction (broom)
+    if (tx.inputs.len > tx.outputs.len) {
+        std.debug.print(" 🧹", .{});
+    }
+
+    // if total output amount is greater than or equal to 10 BTC, indicate a whale
+    if (total_output_value >= 10.0) {
+        std.debug.print(" 🐋", .{});
+    }
     std.debug.print("\n", .{});
 }
 
