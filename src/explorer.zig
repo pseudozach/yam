@@ -419,17 +419,11 @@ pub const Explorer = struct {
             has_args = true;
 
             // Try parsing as range (e.g., 1-10)
-            if (std.mem.indexOfScalar(u8, arg, '-')) |dash_idx| {
-                if (dash_idx > 0 and dash_idx < arg.len - 1) {
-                    const start = std.fmt.parseInt(usize, arg[0..dash_idx], 10) catch null;
-                    const end = std.fmt.parseInt(usize, arg[dash_idx + 1 ..], 10) catch null;
-                    if (start != null and end != null and start.? <= end.?) {
-                        for (start.?..end.? + 1) |idx| {
-                            count += self.connectToIndex(idx, stdout);
-                        }
-                        continue;
-                    }
+            if (parseRange(arg)) |range| {
+                for (range.start..range.end + 1) |idx| {
+                    count += self.connectToIndex(idx, stdout);
                 }
+                continue;
             }
 
             // Try parsing as index
@@ -783,17 +777,11 @@ pub const Explorer = struct {
             has_args = true;
 
             // Try parsing as range (e.g., 1-10)
-            if (std.mem.indexOfScalar(u8, arg, '-')) |dash_idx| {
-                if (dash_idx > 0 and dash_idx < arg.len - 1) {
-                    const start = std.fmt.parseInt(usize, arg[0..dash_idx], 10) catch null;
-                    const end = std.fmt.parseInt(usize, arg[dash_idx + 1 ..], 10) catch null;
-                    if (start != null and end != null and start.? <= end.?) {
-                        for (start.?..end.? + 1) |idx| {
-                            count += self.pingNode(idx);
-                        }
-                        continue;
-                    }
+            if (parseRange(arg)) |range| {
+                for (range.start..range.end + 1) |idx| {
+                    count += self.pingNode(idx);
                 }
+                continue;
             }
 
             const idx = std.fmt.parseInt(usize, arg, 10) catch {
@@ -901,24 +889,7 @@ pub const Explorer = struct {
 
             // Write CSV row - escape user_agent if it contains commas
             try writer.print("{s},{d},", .{ ip, port });
-
-            // Quote user_agent if needed
-            if (std.mem.indexOfScalar(u8, user_agent, ',') != null or
-                std.mem.indexOfScalar(u8, user_agent, '"') != null)
-            {
-                try writer.writeByte('"');
-                for (user_agent) |c| {
-                    if (c == '"') {
-                        try writer.writeAll("\"\"");
-                    } else {
-                        try writer.writeByte(c);
-                    }
-                }
-                try writer.writeByte('"');
-            } else {
-                try writer.writeAll(user_agent);
-            }
-
+            try writeCSVField(writer, user_agent);
             try writer.print(",{s},", .{if (ever_connected) "true" else "false"});
 
             if (latency_ms) |lat| {
@@ -985,24 +956,7 @@ pub const Explorer = struct {
 
                 // Write row
                 try writer.print("{s},{s},", .{ txid, ip });
-
-                // Quote user_agent if needed
-                if (std.mem.indexOfScalar(u8, user_agent, ',') != null or
-                    std.mem.indexOfScalar(u8, user_agent, '"') != null)
-                {
-                    try writer.writeByte('"');
-                    for (user_agent) |c| {
-                        if (c == '"') {
-                            try writer.writeAll("\"\"");
-                        } else {
-                            try writer.writeByte(c);
-                        }
-                    }
-                    try writer.writeByte('"');
-                } else {
-                    try writer.writeAll(user_agent);
-                }
-
+                try writeCSVField(writer, user_agent);
                 try writer.print(",{d}\n", .{ann.timestamp});
                 row_count += 1;
             }
@@ -1079,6 +1033,33 @@ pub const Explorer = struct {
     fn formatNodeKey(self: *Explorer, node: yam.PeerInfo) ![]u8 {
         const addr_str = node.format();
         return try self.allocator.dupe(u8, std.mem.sliceTo(&addr_str, ' '));
+    }
+
+    fn writeCSVField(writer: anytype, field: []const u8) !void {
+        if (std.mem.indexOfScalar(u8, field, ',') != null or
+            std.mem.indexOfScalar(u8, field, '"') != null)
+        {
+            try writer.writeByte('"');
+            for (field) |c| {
+                if (c == '"') {
+                    try writer.writeAll("\"\"");
+                } else {
+                    try writer.writeByte(c);
+                }
+            }
+            try writer.writeByte('"');
+        } else {
+            try writer.writeAll(field);
+        }
+    }
+
+    fn parseRange(arg: []const u8) ?struct { start: usize, end: usize } {
+        const dash_idx = std.mem.indexOfScalar(u8, arg, '-') orelse return null;
+        if (dash_idx == 0 or dash_idx >= arg.len - 1) return null;
+        const start = std.fmt.parseInt(usize, arg[0..dash_idx], 10) catch return null;
+        const end = std.fmt.parseInt(usize, arg[dash_idx + 1 ..], 10) catch return null;
+        if (start > end) return null;
+        return .{ .start = start, .end = end };
     }
 
     // =========================================================================

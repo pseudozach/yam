@@ -13,8 +13,8 @@ const Command = enum {
 
 const BroadcastArgs = struct {
     tx_hex: []const u8,
-    peer_count: u32 = 5,
-    timing: relay.TimingStrategy = .simultaneous,
+    peer_count: u32 = 8,
+    timing: relay.TimingStrategy = .staggered_random,
     discover: bool = false,
 };
 
@@ -89,8 +89,8 @@ fn parseBroadcastArgs(args_iter: anytype) ?BroadcastArgs {
             if (args_iter.next()) |count_str| {
                 result.peer_count = std.fmt.parseInt(u32, count_str, 10) catch 5;
             }
-        } else if (std.mem.eql(u8, arg, "--staggered") or std.mem.eql(u8, arg, "-s")) {
-            result.timing = .staggered_random;
+        } else if (std.mem.eql(u8, arg, "--simultaneous") or std.mem.eql(u8, arg, "-s")) {
+            result.timing = .simultaneous;
         } else if (std.mem.eql(u8, arg, "--discover") or std.mem.eql(u8, arg, "-d")) {
             result.discover = true;
         }
@@ -123,13 +123,13 @@ fn printBroadcastUsage() void {
         \\  <tx_hex>                Raw transaction hex to broadcast
         \\
         \\OPTIONS:
-        \\  --peers, -p <count>     Number of peers to broadcast to (default: 5)
-        \\  --staggered, -s         Use random delays between broadcasts (privacy)
+        \\  --peers, -p <count>     Number of peers to broadcast to (default: 8)
+        \\  --simultaneous, -s      Send to all peers at once (default: staggered)
         \\  --discover, -d          Enable recursive peer discovery via getaddr
         \\
         \\EXAMPLES:
         \\  yam broadcast 0100000001...
-        \\  yam broadcast 0100000001... --peers 8 --staggered
+        \\  yam broadcast 0100000001... --peers 10 --simultaneous
         \\
     ;
     std.debug.print("{s}", .{usage});
